@@ -59,6 +59,7 @@ class EndpointBle implements Endpoint:
               state-channel.send "File length missing"
               continue
             install-firmware file-length (BleReader firmware-charac)
+            firmware-is-upgrade-pending = true
         else if payload.type == Payload.TYPE-CRC32:
           crc32 = payload.data
           logger.info "Received CRC32"
