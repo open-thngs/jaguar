@@ -6,12 +6,12 @@ import reader
 
 import .jaguar
 
-DEVICE-SERVICE-UUID ::= BleUuid "7017" //Custom Base UUID Toit
-COMMAND-CHARAC-UUID ::= BleUuid "7018" 
-FIRMWARE-CHARAC-UUID ::= BleUuid "7019"
-CRC32-CHARAC-UUID ::= BleUuid "701A" 
-FILELENGTH-CHARAC-UUID ::= BleUuid "701B"
-STATE-CHARAC-UUID ::= BleUuid "701C"
+DEVICE-SERVICE-UUID     ::= BleUuid "7017" //Custom Base UUID Toit
+COMMAND-CHARAC-UUID     ::= BleUuid "7018" 
+FIRMWARE-CHARAC-UUID    ::= BleUuid "7019"
+CRC32-CHARAC-UUID       ::= BleUuid "701A" 
+FILELENGTH-CHARAC-UUID  ::= BleUuid "701B"
+STATE-CHARAC-UUID       ::= BleUuid "701C"
 
 class EndpointBle implements Endpoint:
   logger/log.Logger
@@ -54,12 +54,16 @@ class EndpointBle implements Endpoint:
           if payload.data == 1:
             if not crc32:
               state-channel.send "CRC32 missing"
+              set-state "CRC32 missing"
               continue
             else if file-length == 0:
               state-channel.send "File length missing"
+              set-state "File length missing"
               continue
+            set-state "Downloading"
             install-firmware file-length (BleReader firmware-charac)
             firmware-is-upgrade-pending = true
+            set-state "Done"
         else if payload.type == Payload.TYPE-CRC32:
           crc32 = payload.data
           logger.info "Received CRC32"
@@ -74,6 +78,7 @@ class EndpointBle implements Endpoint:
     adapter.set_preferred_mtu 128
     peripheral = adapter.peripheral
     service := peripheral.add_service DEVICE_SERVICE_UUID
+
     firmware-charac = service.add-write-only-characteristic FIRMWARE-CHARAC-UUID
     command-charac = service.add-write-only-characteristic COMMAND-CHARAC-UUID
     crc32-charac = service.add-write-only-characteristic CRC32-CHARAC-UUID
@@ -87,6 +92,7 @@ class EndpointBle implements Endpoint:
         --check_size=false 
         --connectable=true
         --service_classes=[DEVICE_SERVICE_UUID]
+    set-state "Ready"
 
   state-task:
     while true:
