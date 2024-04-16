@@ -32,11 +32,12 @@ class EndpointBle implements Endpoint:
   constructor --logger/log.Logger:
     this.logger = logger.with-name "ble"
     state-channel = Channel 1
-    process-channel = Channel 3
+    process-channel = Channel 1
 
   run device/Device:
     try:
       run-ble-service device.name
+      logger.info "running Jaguar device '$device.name' (id: '$device.id') on Bluetooth"
       validate-firmware --reason="bluetooth service started"
 
       logger.info "Waiting for Bluetooth inputs"
@@ -45,33 +46,35 @@ class EndpointBle implements Endpoint:
         :: crc32-task,
         :: file-length-task,
         :: command-receiver-task,
-        :: state-task
+        :: state-task,
+        :: ble-handler-task
       ]
-
-      while true:
-        payload/Payload := process-channel.receive
-        if payload.type == Payload.TYPE-COMMAND:
-          if payload.data == 1:
-            if not crc32:
-              state-channel.send "CRC32 missing"
-              set-state "CRC32 missing"
-              continue
-            else if file-length == 0:
-              state-channel.send "File length missing"
-              set-state "File length missing"
-              continue
-            set-state "Downloading"
-            install-firmware file-length (BleReader firmware-charac)
-            firmware-is-upgrade-pending = true
-            set-state "Done"
-        else if payload.type == Payload.TYPE-CRC32:
-          crc32 = payload.data
-          logger.info "Received CRC32"
-        else if payload.type == Payload.TYPE-FILE-LENGTH:
-          file-length = payload.data
-          logger.info "Received File Length: $file-length"
     finally:
       peripheral.stop-advertise
+
+  ble-handler-task:
+    while true:
+      payload/Payload := process-channel.receive
+      logger.info "Received payload: $payload.to-string"
+      if payload.type == Payload.TYPE-COMMAND:
+        command := int.parse payload.data.to-string
+        if command == 1:
+          if not crc32:
+            set-state "CRC32 missing"
+            continue
+          else if file-length == 0:
+            set-state "File length missing"
+            continue
+          set-state "Downloading"
+          install-firmware file-length (BleReader firmware-charac file-length)
+          firmware-is-upgrade-pending = true
+          set-state "Done"
+      else if payload.type == Payload.TYPE-CRC32:
+        crc32 = payload.data
+        logger.info "Received CRC32"
+      else if payload.type == Payload.TYPE-FILE-LENGTH:
+        file-length = int.parse payload.data.to-string
+        logger.info "Received File Length: $file-length"
 
   run-ble-service device-name:
     adapter := Adapter 
@@ -92,6 +95,8 @@ class EndpointBle implements Endpoint:
         --check_size=false 
         --connectable=true
         --service_classes=[DEVICE_SERVICE_UUID]
+
+    logger.info "Jaguar BLE running as $device-name"
     set-state "Ready"
 
   state-task:
@@ -116,7 +121,7 @@ class EndpointBle implements Endpoint:
       process-channel.send payload
 
   set-state state/string:
-    state-channel.send state
+    state-channel.send state.to-byte-array
 
   name -> string:
     return "BLE"
@@ -124,11 +129,17 @@ class EndpointBle implements Endpoint:
 class BleReader implements reader.Reader:
 
   firmware-charac/LocalCharacteristic := ?
+  file-length/int := ?
+  received-data-length := 0
 
-  constructor .firmware-charac/LocalCharacteristic:
+  constructor .firmware-charac/LocalCharacteristic .file-length/int:
 
   read:
-    return firmware-charac.read //blocking wait for byte paket
+    if received-data-length == file-length:
+      return false
+    paket := firmware-charac.read //blocking wait for byte paket
+    received-data-length += paket.size
+    return paket
 
 
 class Payload:
@@ -137,6 +148,9 @@ class Payload:
   static TYPE-FILE-LENGTH ::= 2
 
   type/int
-  data/any
+  data/ByteArray
 
   constructor .type/int .data/any:
+
+  to-string:
+    return "Type: $type, Data: $data"
