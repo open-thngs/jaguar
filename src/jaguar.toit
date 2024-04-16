@@ -19,6 +19,7 @@ import system.firmware
 import .container-registry
 import .network
 import .uart
+import .bluetooth
 
 interface Endpoint:
   run device/Device -> none
@@ -61,6 +62,10 @@ main arguments:
   ]
   uart := device.config.get "endpointUart"
   if uart: endpoints.add (EndpointUart --config=uart --logger=logger)
+
+  ble := device.config.get "endpointBle"
+  if ble: endpoints.add (EndpointBle --logger=logger)
+  
   main device endpoints
 
 main device/Device endpoints/List:
