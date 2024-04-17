@@ -78,10 +78,9 @@ class EndpointBle implements Endpoint:
 
   run-ble-service device-name:
     adapter := Adapter 
-    adapter.set_preferred_mtu 128
+    adapter.set_preferred_mtu 251
     peripheral = adapter.peripheral
     service := peripheral.add_service DEVICE_SERVICE_UUID
-
     firmware-charac = service.add-write-only-characteristic FIRMWARE-CHARAC-UUID
     command-charac = service.add-write-only-characteristic COMMAND-CHARAC-UUID
     crc32-charac = service.add-write-only-characteristic CRC32-CHARAC-UUID
@@ -131,14 +130,18 @@ class BleReader implements reader.Reader:
   firmware-charac/LocalCharacteristic := ?
   file-length/int := ?
   received-data-length := 0
+  paket := null
+  paket-count := 0
 
   constructor .firmware-charac/LocalCharacteristic .file-length/int:
 
   read:
-    if received-data-length == file-length:
-      return false
-    paket := firmware-charac.read //blocking wait for byte paket
+    if received-data-length >= file-length:
+      return null
+    paket = firmware-charac.read //blocking wait for byte paket
+    paket-count++
     received-data-length += paket.size
+    logger.info "Received $received-data-length/$file-length ($paket-count)"
     return paket
 
 
@@ -147,10 +150,12 @@ class Payload:
   static TYPE-CRC32 ::= 1
   static TYPE-FILE-LENGTH ::= 2
 
+  string-mapping := ["COMMAND", "CRC32", "FILELENGTH"]
+
   type/int
   data/ByteArray
 
   constructor .type/int .data/any:
 
   to-string:
-    return "Type: $type, Data: $data"
+    return "Type: $string-mapping[type], Data: $data"
