@@ -6,12 +6,13 @@ import reader
 
 import .jaguar
 
-DEVICE-SERVICE-UUID     ::= BleUuid "7017" //Custom Base UUID Toit
-COMMAND-CHARAC-UUID     ::= BleUuid "7018" 
-FIRMWARE-CHARAC-UUID    ::= BleUuid "7019"
-CRC32-CHARAC-UUID       ::= BleUuid "701A" 
-FILELENGTH-CHARAC-UUID  ::= BleUuid "701B"
-STATE-CHARAC-UUID       ::= BleUuid "701C"
+DEVICE-SERVICE-UUID       ::= BleUuid "7017" //Custom Base UUID Toit
+COMMAND-CHARAC-UUID       ::= BleUuid "7018" 
+FIRMWARE-CHARAC-UUID      ::= BleUuid "7019"
+CRC32-CHARAC-UUID         ::= BleUuid "701A" 
+FILELENGTH-CHARAC-UUID    ::= BleUuid "701B"
+STATE-CHARAC-UUID         ::= BleUuid "701C"
+PACKET-COUNT-CHARAC-UUID  ::= BleUuid "701D"
 
 class EndpointBle implements Endpoint:
   logger/log.Logger
@@ -22,6 +23,7 @@ class EndpointBle implements Endpoint:
   crc32-charac/LocalCharacteristic? := null
   file-length-charac/LocalCharacteristic? := null
   state-charac/LocalCharacteristic? := null
+  packet-count-charac/LocalCharacteristic? := null
 
   state-channel/Channel := ?
   process-channel/Channel := ?
@@ -66,7 +68,7 @@ class EndpointBle implements Endpoint:
             set-state "File length missing"
             continue
           set-state "Downloading"
-          install-firmware file-length (BleReader firmware-charac file-length)
+          install-firmware file-length (BleReader firmware-charac packet-count-charac file-length) 
           firmware-is-upgrade-pending = true
           set-state "Done"
       else if payload.type == Payload.TYPE-CRC32:
@@ -78,7 +80,7 @@ class EndpointBle implements Endpoint:
 
   run-ble-service device-name:
     adapter := Adapter 
-    adapter.set_preferred_mtu 251
+    adapter.set_preferred_mtu 512
     peripheral = adapter.peripheral
     service := peripheral.add_service DEVICE_SERVICE_UUID
     firmware-charac = service.add-write-only-characteristic FIRMWARE-CHARAC-UUID
@@ -86,6 +88,7 @@ class EndpointBle implements Endpoint:
     crc32-charac = service.add-write-only-characteristic CRC32-CHARAC-UUID
     file-length-charac = service.add-write-only-characteristic FILELENGTH-CHARAC-UUID
     state-charac = service.add-notification-characteristic STATE-CHARAC-UUID
+    packet-count-charac = service.add-notification-characteristic PACKET-COUNT-CHARAC-UUID
 
     service.deploy
     peripheral.start-advertise --connection_mode=BLE_CONNECT_MODE_UNDIRECTIONAL
@@ -101,7 +104,7 @@ class EndpointBle implements Endpoint:
   state-task:
     while true:
       state := state-channel.receive
-      this.logger.info "State: $state"
+      this.logger.info "State: $state.to-string"
       state-charac.write state
 
   command-receiver-task:
@@ -128,22 +131,26 @@ class EndpointBle implements Endpoint:
 class BleReader implements reader.Reader:
 
   firmware-charac/LocalCharacteristic := ?
+  packet-count-charac/LocalCharacteristic := ?
   file-length/int := ?
+  max-packet-count := ?
   received-data-length := 0
   paket := null
-  paket-count := 0
+  paket-count/int := 0
 
-  constructor .firmware-charac/LocalCharacteristic .file-length/int:
+  constructor .firmware-charac/LocalCharacteristic .packet-count-charac/LocalCharacteristic .file-length/int:
+    max-packet-count = file-length / 251
 
   read:
-    if received-data-length >= file-length:
+    if received-data-length >= file-length or paket-count >= max-packet-count:
       return null
+    logger.info "request packet $paket-count"
+    packet-count-charac.write "$paket-count".to-byte-array
     paket = firmware-charac.read //blocking wait for byte paket
-    paket-count++
     received-data-length += paket.size
     logger.info "Received $received-data-length/$file-length ($paket-count)"
+    paket-count++
     return paket
-
 
 class Payload:
   static TYPE-COMMAND ::= 0
