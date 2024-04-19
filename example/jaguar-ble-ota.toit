@@ -15,9 +15,6 @@ CRC32-CHARAC-UUID       ::= BleUuid "701A"
 FILELENGTH-CHARAC-UUID  ::= BleUuid "701B"
 PACKET-COUNT-CHARAC-UUID  ::= BleUuid "701D"
 
-test-firmware-length ::= 6666
-test-firmware/ByteArray := ByteArray test-firmware-length
-
 MTU ::= 512
 PAKET-SIZE := MTU - 3
 
@@ -51,8 +48,7 @@ main:
       packet-count-charac = characteristic
 
   firmware.map:  | firmware-mapping/FirmwareMapping |
-    // firmware-length := firmware-mapping.size
-    firmware-length := test-firmware-length
+    firmware-length := firmware-mapping.size
     packet-count := firmware-length / PAKET-SIZE
     logger.debug "write Firmwarelength: $firmware-length bytes ($packet-count packets)"
     file-length-charac.write "$firmware-length".to-byte-array
@@ -66,36 +62,38 @@ main:
     chunk := ByteArray PAKET-SIZE
     done := false
     send-packets := 0
+    send-bytes := 0
     packet/int := 0
-    while send-packets <= packet-count:
-      // packet = int.parse (packet-count-charac.wait-for-notification).to-string
-      // logger.debug "Received packet request: $packet"
-      from := send-packets * PAKET-SIZE
-      done = false
-      while not done:
+    last := null
+    List.chunk-up 0 firmware-mapping.size PAKET-SIZE: | chunk-from/int chunk-to/int chunk-size/int |
+      // if send-bytes % 4096 == 0:
+      //   sleep --ms=50
+      while true: //retry on error
         exception := catch:
-          to := min (from + PAKET-SIZE) firmware-length
-          // chunk = ByteArray (to - from)
-          // firmware-mapping.copy from to --into=chunk
-          chunk = test-firmware.copy from to
-          logger.debug "Writing chunk from $from to $to size $chunk.size ($send-packets)"
-          firmware-charac.write chunk
-          sleep --ms=25
-          send-packets++
-          done = true
+          bytes := ByteArray chunk-size
+          firmware-mapping.copy --into=bytes chunk-from chunk-to
+          firmware-charac.write bytes
+          send-bytes += chunk-size
+          percent := (send-bytes * 100) / firmware-length
+          if percent != last:
+            logger.info "sending firmware with $firmware-length bytes ($percent%)"
+            last = percent
+
+          break
         if exception:
           if exception.contains "error code: 0x06":
-            logger.error "ENOMEM: reached memory limit, retry"
+            // logger.error "ENOMEM: reached memory limit, retry"
+            //ignore and retry
           if exception.contains "error code: 0x07":
             logger.error "ENOCON: connection lost"
           sleep --ms=100
-    
-    sleep --ms=5000
+      
+    sleep --ms=2000 // wait for the last packets to be written
     logger.debug "Firmware written"
 
 find-with-service central/Central service/BleUuid duration/int=3:
   central.scan --duration=(Duration --s=duration): | device/RemoteScannedDevice |
     if device.data.service_classes.contains service:
-        logger.debug "Found device with service $service: $device"
-        return device.address
+      logger.debug "Found device with service $service: $device"
+      return device.address
   throw "no device found"
