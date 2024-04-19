@@ -6,6 +6,7 @@ import reader
 
 import .jaguar
 
+PREFERED-MTU ::= 512
 DEVICE-SERVICE-UUID       ::= BleUuid "7017" //Custom Base UUID Toit
 COMMAND-CHARAC-UUID       ::= BleUuid "7018" 
 FIRMWARE-CHARAC-UUID      ::= BleUuid "7019"
@@ -80,9 +81,9 @@ class EndpointBle implements Endpoint:
 
   run-ble-service device-name:
     adapter := Adapter 
-    adapter.set_preferred_mtu 512
+    adapter.set_preferred_mtu PREFERED-MTU
     peripheral = adapter.peripheral
-    service := peripheral.add_service DEVICE_SERVICE_UUID
+    service := peripheral.add_service DEVICE-SERVICE-UUID
     firmware-charac = service.add-write-only-characteristic FIRMWARE-CHARAC-UUID
     command-charac = service.add-write-only-characteristic COMMAND-CHARAC-UUID
     crc32-charac = service.add-write-only-characteristic CRC32-CHARAC-UUID
@@ -135,22 +136,23 @@ class BleReader implements reader.Reader:
   file-length/int := ?
   max-packet-count := ?
   received-data-length := 0
-  paket := null
-  paket-count/int := 0
+  packet := null
+  packet-count/int := 0
 
   constructor .firmware-charac/LocalCharacteristic .packet-count-charac/LocalCharacteristic .file-length/int:
     max-packet-count = file-length / 251
 
   read:
-    if received-data-length >= file-length or paket-count >= max-packet-count:
+    if received-data-length >= file-length:
       return null
-    logger.info "request packet $paket-count"
-    packet-count-charac.write "$paket-count".to-byte-array
-    paket = firmware-charac.read //blocking wait for byte paket
-    received-data-length += paket.size
-    logger.info "Received $received-data-length/$file-length ($paket-count)"
-    paket-count++
-    return paket
+    // logger.info "request packet $paket-count"
+    // packet-count-charac.write "$paket-count".to-byte-array
+    packet = firmware-charac.read //blocking wait for byte paket
+    // logger.info "Paket.size: $paket.size"
+    received-data-length += packet.size
+    logger.info "Received $received-data-length/$file-length ($packet-count : $packet.size)"
+    packet-count++
+    return packet.copy
 
 class Payload:
   static TYPE-COMMAND ::= 0

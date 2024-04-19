@@ -15,11 +15,15 @@ CRC32-CHARAC-UUID       ::= BleUuid "701A"
 FILELENGTH-CHARAC-UUID  ::= BleUuid "701B"
 PACKET-COUNT-CHARAC-UUID  ::= BleUuid "701D"
 
-PAKET-SIZE := 512
+test-firmware-length ::= 6666
+test-firmware/ByteArray := ByteArray test-firmware-length
+
+MTU ::= 512
+PAKET-SIZE := MTU - 3
 
 main:
   adapter := Adapter
-  adapter.set-preferred-mtu PAKET-SIZE
+  adapter.set-preferred-mtu MTU
   central := adapter.central
 
   address := find-with-service central TOIT-BLE-FIRMWARE-SERVICE-UUID 3
@@ -47,7 +51,8 @@ main:
       packet-count-charac = characteristic
 
   firmware.map:  | firmware-mapping/FirmwareMapping |
-    firmware-length := firmware-mapping.size
+    // firmware-length := firmware-mapping.size
+    firmware-length := test-firmware-length
     packet-count := firmware-length / PAKET-SIZE
     logger.debug "write Firmwarelength: $firmware-length bytes ($packet-count packets)"
     file-length-charac.write "$firmware-length".to-byte-array
@@ -62,24 +67,30 @@ main:
     done := false
     send-packets := 0
     packet/int := 0
-    while true:
-      packet = int.parse (packet-count-charac.wait-for-notification).to-string
-      logger.debug "Received packet request: $packet"
-      if packet > packet-count:
-        firmware-charac.write #[]
-      from := packet * PAKET-SIZE
+    while send-packets <= packet-count:
+      // packet = int.parse (packet-count-charac.wait-for-notification).to-string
+      // logger.debug "Received packet request: $packet"
+      from := send-packets * PAKET-SIZE
       done = false
       while not done:
         exception := catch:
           to := min (from + PAKET-SIZE) firmware-length
-          firmware-mapping.copy from to --into=chunk
+          // chunk = ByteArray (to - from)
+          // firmware-mapping.copy from to --into=chunk
+          chunk = test-firmware.copy from to
           logger.debug "Writing chunk from $from to $to size $chunk.size ($send-packets)"
           firmware-charac.write chunk
+          sleep --ms=25
           send-packets++
           done = true
         if exception:
-          logger.error "Error occured while writing firmware chunk: $exception"
+          if exception.contains "error code: 0x06":
+            logger.error "ENOMEM: reached memory limit, retry"
+          if exception.contains "error code: 0x07":
+            logger.error "ENOCON: connection lost"
+          sleep --ms=100
     
+    sleep --ms=5000
     logger.debug "Firmware written"
 
 find-with-service central/Central service/BleUuid duration/int=3:
