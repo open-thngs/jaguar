@@ -58,13 +58,13 @@ registry_ / ContainerRegistry ::= ContainerRegistry
 main arguments:
   device := Device.parse arguments
   endpoints := [
-    EndpointHttp logger,
+    // EndpointHttp logger,
   ]
   uart := device.config.get "endpointUart"
   if uart: endpoints.add (EndpointUart --config=uart --logger=logger)
 
-  ble := device.config.get "endpointBle"
-  if ble: endpoints.add (EndpointBle --logger=logger)
+  // ble := device.config.get "endpointBle"
+  endpoints.add (EndpointBle --logger=logger)
   
   main device endpoints
 
@@ -112,7 +112,7 @@ serve device/Device endpoints/List -> none:
       attempts ::= 3
       failures := 0
       while failures < attempts:
-        exception := catch: endpoint.run device
+        exception := catch --trace: endpoint.run device
         // If we have a pending firmware upgrade, we take care of
         // it before trying to re-open the network.
         if firmware-is-upgrade-pending: firmware.upgrade
@@ -300,7 +300,7 @@ run-code image-size/int reader/reader.Reader defines/Map --crc32/int -> none:
     if disabled: container-done.up
 
 install-firmware firmware-size/int reader/reader.Reader -> none:
-  with-timeout --ms=300_000: flash-mutex.do:
+  with-timeout --ms=4_500_000: flash-mutex.do:
     logger.info "installing firmware with $firmware-size bytes"
     written-size := 0
     writer := firmware.FirmwareWriter 0 firmware-size
@@ -311,7 +311,7 @@ install-firmware firmware-size/int reader/reader.Reader -> none:
         writer.write data
         percent := (written-size * 100) / firmware-size
         if percent != last:
-          logger.info "installing firmware with $firmware-size bytes ($percent%)"
+          logger.info "installing firmware with $firmware-size bytes ($percent% $written-size)"
           last = percent
       writer.commit
       logger.info "installed firmware; ready to update on chip reset"
