@@ -15,7 +15,7 @@ CRC32-CHARAC-UUID       ::= BleUuid "701A"
 FILELENGTH-CHARAC-UUID  ::= BleUuid "701B"
 PACKET-COUNT-CHARAC-UUID  ::= BleUuid "701D"
 
-PAKET-SIZE := 500
+PAKET-SIZE := 512
 
 main:
   adapter := Adapter
@@ -52,8 +52,7 @@ main:
     logger.debug "write Firmwarelength: $firmware-length bytes ($packet-count packets)"
     file-length-charac.write "$firmware-length".to-byte-array
     logger.debug "Write crc32"
-    crc32-charac.write #[0x01, 0x00, 0x00]
-    // crc32-charac.write "1".to-byte-array
+    crc32-charac.write "1".to-byte-array
     packet-count-charac.subscribe
     logger.debug "Write command"
     command-charac.write "1".to-byte-array
