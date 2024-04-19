@@ -300,7 +300,7 @@ run-code image-size/int reader/reader.Reader defines/Map --crc32/int -> none:
     if disabled: container-done.up
 
 install-firmware firmware-size/int reader/reader.Reader -> none:
-  with-timeout --ms=4_500_000: flash-mutex.do:
+  with-timeout --ms=500_000: flash-mutex.do:
     logger.info "installing firmware with $firmware-size bytes"
     written-size := 0
     writer := firmware.FirmwareWriter 0 firmware-size
@@ -311,7 +311,7 @@ install-firmware firmware-size/int reader/reader.Reader -> none:
         writer.write data
         percent := (written-size * 100) / firmware-size
         if percent != last:
-          logger.info "installing firmware with $firmware-size bytes ($percent% $written-size)"
+          logger.info "installing firmware with $firmware-size bytes ($percent%)"
           last = percent
       writer.commit
       logger.info "installed firmware; ready to update on chip reset"
